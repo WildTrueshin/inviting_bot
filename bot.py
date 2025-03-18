@@ -17,18 +17,18 @@ admins_list = config.admins_list
 def init_db():
     conn = sqlite3.connect(path_to_db)
     cur = conn.cursor()
-    cur.execute('''CREATE TABLE IF NOT EXISTS guests(user_id, organization, post, name)''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS guests(user_id, organization, post, name, phone)''')
     conn.commit()
     conn.close()
 
-def add_user_to_db(user_id, organization, post, name):
+def add_user_to_db(user_id, organization, post, name, phone):
     user_id = str(user_id)
     conn = sqlite3.connect(path_to_db)
     cur = conn.cursor()
     cur.execute('''INSERT OR REPLACE INTO guests
-                 (user_id, organization, post, name)
-                 VALUES (?, ?, ?, ?)''',
-               (user_id, organization, post, name))
+                 (user_id, organization, post, name, phone)
+                 VALUES (?, ?, ?, ?, ?)''',
+               (user_id, organization, post, name, phone))
     conn.commit()
     conn.close()
 
@@ -61,6 +61,7 @@ class UserState(StatesGroup):
     organization = State()
     post = State()
     name = State()
+    phone = State()
 
 def create_single_button(text):
     return ReplyKeyboardMarkup(
@@ -107,16 +108,28 @@ async def get_post(message: Message, state: FSMContext):
 @dp.message(UserState.name)
 async def get_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
+    await state.set_state(UserState.phone)
+    await message.answer(
+            "Введите ваш контактный номер телефона"
+          )
+
+@dp.message(UserState.phone)
+async def get_phone(message: Message, state: FSMContext):
+    await state.update_data(phone=message.text)
     data = await state.get_data()
-    add_user_to_db(message.from_user.id, data["organization"], data["post"], data["name"])
+    add_user_to_db(message.from_user.id, data["organization"], data["post"], data["name"], data["phone"])
     await state.clear()
     await message.answer(
-            "Вы успешно зарегистрированы",
+            '''Вы успешно зарегистрированы.
+
+Ждем Вас 28 апреля 2025г. в 12.00 в ресторане "Пирамида" по адресу г. Казань, ул. Московская 3, этаж 4.
+            ''',
             reply_markup=create_single_button("Отменить регистрацию")
           )
 
 @dp.message(F.text.lower() == "отменить регистрацию")
-async def canel_ref(message: Message):
+async def canel_ref(message: Message, state: FSMContext):
+    await state.clear()
     delete_user_from_db(message.from_user.id)
     await message.answer(
             "Регистрация отменена",
@@ -128,7 +141,8 @@ def generate_message(users_list):
     for user in users_list:
         res += user[1] + "\n";
         res += user[2] + "\n";
-        res += user[3] + "\n\n";
+        res += user[3] + "\n";
+        res += user[4] + "\n\n"
     return res
 
 @dp.message(F.text.lower() == "список зарегистрированных")
